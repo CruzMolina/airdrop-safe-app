@@ -10,11 +10,12 @@ module.exports = defineConfig({
       "Access-Control-Allow-Headers":
         "X-Requested-With, content-type, Authorization",
     },
+    hot: true,
     https: {
       key: readFileSync(join(__dirname, "./localhost+2-key.pem")),
       cert: readFileSync(join(__dirname, "./localhost+2.pem")),
     },
-    // public: "https://192.168.0.143:8080", // Use your local IP and port
   },
-  transpileDependencies: true,
+  transpileDependencies: false,
+  parallel: false,
 });
