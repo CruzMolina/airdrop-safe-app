@@ -19,8 +19,12 @@
         >
       </p>
     </div>
-    <div v-if="account && showMintModal" class="modal-overlay">
-      <div class="modal sci-fi-modal" @click="handleInput">
+    <div
+      v-if="account && showMintModal"
+      class="modal-overlay"
+      @click="closeMintModal"
+    >
+      <div class="modal sci-fi-modal" @click.stop="handleInput">
         <h2>How Much $MINT Should We Mint?</h2>
         <div class="input-group">
           <input
@@ -46,6 +50,7 @@ import SafeAppsSDK from "@safe-global/safe-apps-sdk";
 import { parseEther } from "viem";
 import { onMounted, ref } from "vue";
 
+const closeModalSound = new Audio("/close-modal.ogg");
 const connectionDisplayClickSound = new Audio("/connected-safe.wav");
 const mintLfgSound = new Audio("/mint-lfg.ogg");
 const inputSound = new Audio("/mint-input.wav");
@@ -78,6 +83,12 @@ export default {
     const mintAmount = ref(100000); // Default to 100,000 $MINT
     const showMintModal = ref(false);
     const txs = ref([]);
+
+    const closeMintModal = () => {
+      closeModalSound.play();
+
+      showMintModal.value = false;
+    };
 
     const displayMintModal = () => {
       playConnectionDisplaySound();
@@ -153,6 +164,7 @@ export default {
 
     return {
       account,
+      closeMintModal,
       displayMintModal,
       ethBalance,
       error,
