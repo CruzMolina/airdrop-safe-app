@@ -1,7 +1,7 @@
 {
-  "short_name": "Safe App",
-  "name": "Gnosis Safe App Starter",
-  "description": "Describe your Safe App here",
+  "short_name": "Disperse & Drop",
+  "name": "Disperse & Drop",
+  "description": "For minting & dispersing $MINT tokens via UI",
   "icons": [
     {
       "src": "logo.svg",

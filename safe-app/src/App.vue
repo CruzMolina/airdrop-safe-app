@@ -15,7 +15,7 @@
       </div>
       <p>
         <strong
-          ><span>{{ ethBalance }} ETH</span></strong
+          ><span>{{ formatNumber(ethBalance) }} ETH</span></strong
         >
       </p>
     </div>
@@ -24,15 +24,15 @@
       class="modal-overlay"
       @click="closeMintModal"
     >
-      <div class="modal sci-fi-modal" @click.stop="handleInput">
+      <div class="modal sci-fi-modal" @click.stop="handleMintInput">
         <h2>How Much $MINT Should We Mint?</h2>
         <div class="input-group">
           <input
             type="number"
             v-model="mintAmount"
             class="sci-fi-input"
-            @input="handleInput"
-            @focus="handleInput"
+            @input="handleMintInput"
+            @focus="handleMintInput"
             min="0"
           />
           <span class="input-label">$MINT</span>
@@ -42,24 +42,80 @@
         </div>
       </div>
     </div>
+    <div
+      v-if="showDisperseModal"
+      class="modal-overlay"
+      @click="closeDisperseModal"
+    >
+      <div class="modal sci-fi-modal" @click.stop="handleDisperseInput">
+        <h2>Who should we send $MINT to?</h2>
+
+        <div
+          v-for="(recipient, index) in recipients"
+          :key="index"
+          class="recipient-group"
+        >
+          <input
+            type="text"
+            v-model="recipient.recipientAddress"
+            placeholder="Recipient Address"
+            class="sci-fi-input sci-fi-input-recipients w-96"
+            @input="() => handleDisperseInput(index)"
+            @focus="() => handleDisperseInput(index)"
+          />
+          <input
+            type="number"
+            v-model="recipient.mintAmount"
+            placeholder="Amount"
+            class="sci-fi-input sci-fi-input-recipient"
+            min="0"
+            @input="() => handleDisperseInput(index)"
+            @focus="() => handleDisperseInput(index)"
+          />
+          <button
+            v-if="recipients.length > 1"
+            @click.stop="removeRecipient(index)"
+            class="delete-button"
+          >
+            Remove
+          </button>
+        </div>
+
+        <button @click.stop="addRecipient" class="add-button">
+          Add Recipient
+        </button>
+        <button @click.stop="disperseTokens" class="lfg-button">
+          Disperse
+        </button>
+      </div>
+    </div>
   </div>
 </template>
 
 <script>
 import SafeAppsSDK from "@safe-global/safe-apps-sdk";
-import { parseEther } from "viem";
+import { createPublicClient, encodeFunctionData, http, parseEther } from "viem";
+import { arbitrum } from "viem/chains";
 import { onMounted, ref } from "vue";
 
+const backSound = new Audio("back-button.mp3");
 const closeModalSound = new Audio("/close-modal.ogg");
 const connectionDisplayClickSound = new Audio("/connected-safe.wav");
+const disperseTokensSound = new Audio("/disperse-tokens.ogg");
 const mintLfgSound = new Audio("/mint-lfg.ogg");
 const inputSound = new Audio("/mint-input.wav");
+const removeRecipientSound = new Audio("/remove-recipient.wav");
+
+const client = createPublicClient({
+  chain: arbitrum,
+  transport: http(),
+});
 
 const PEREPTUAL_MINT_DIAMOND_ADDRESS =
   "0x791b648AA3Bd21964417690C635040F40ce974a5";
 
-// const TOKEN_PROXY_DIAMOND_ADDRESS =
-//   "0xEf97C7394F71851880A7868D21df3A9dF24FAfC7";
+const TOKEN_PROXY_DIAMOND_ADDRESS =
+  "0xEf97C7394F71851880A7868D21df3A9dF24FAfC7";
 
 const playConnectionDisplaySound = () => {
   connectionDisplayClickSound.play();
@@ -78,16 +134,97 @@ function truncateAddress(addr, firstN = 6, lastN = 4) {
 export default {
   setup() {
     const account = ref(null);
+    const appsSdkRef = ref(null);
     const ethBalance = ref(0);
     const error = ref("");
     const mintAmount = ref(100000); // Default to 100,000 $MINT
+    const recipients = ref([{ recipientAddress: "", mintAmount: 100000 }]);
+    const showDisperseModal = ref(false);
     const showMintModal = ref(false);
     const txs = ref([]);
+
+    const addRecipient = () => {
+      playMintLfgSound();
+
+      recipients.value.push({ recipientAddress: "", mintAmount: 100000 });
+    };
+
+    const closeDisperseModal = () => {
+      closeModalSound.play();
+
+      showDisperseModal.value = false;
+    };
 
     const closeMintModal = () => {
       closeModalSound.play();
 
       showMintModal.value = false;
+    };
+
+    const disperseTokens = async () => {
+      disperseTokensSound.play();
+
+      // Extract recipient addresses
+      const recipientAddresses = recipients.value.map(
+        (recipient) => recipient.recipientAddress,
+      );
+
+      // Extract mint amounts
+      const mintAmounts = recipients.value.map((recipient) =>
+        parseEther(recipient.mintAmount.toString()),
+      );
+
+      console.log(recipientAddresses, mintAmounts);
+
+      txs.value.push({
+        to: TOKEN_PROXY_DIAMOND_ADDRESS,
+        value: 0,
+        data: encodeFunctionData({
+          abi: [
+            {
+              inputs: [
+                {
+                  internalType: "address[]",
+                  name: "recipients",
+                  type: "address[]",
+                },
+                {
+                  internalType: "uint256[]",
+                  name: "amounts",
+                  type: "uint256[]",
+                },
+              ],
+              name: "disperseTokens",
+              outputs: [],
+              stateMutability: "nonpayable",
+              type: "function",
+            },
+          ],
+          functionName: "disperseTokens",
+          args: [recipientAddresses, mintAmounts],
+        }),
+      });
+
+      // eslint-disable-next-line
+      BigInt.prototype.toJSON = function () {
+        return this.toString();
+      };
+
+      try {
+        await appsSdkRef.value.txs.send({
+          txs: JSON.parse(JSON.stringify(txs.value)),
+        });
+
+        // Logic to disperse tokens
+        console.log("Dispersing to:", recipients.value);
+        showDisperseModal.value = false;
+      } catch (err) {
+        backSound.play();
+
+        console.error(err);
+
+        txs.value.pop();
+      }
     };
 
     const displayMintModal = () => {
@@ -97,7 +234,11 @@ export default {
       txs.value = [];
     };
 
-    const handleInput = () => {
+    const formatNumber = (num) => {
+      return new Intl.NumberFormat("en-US").format(num);
+    };
+
+    const handleMintInput = () => {
       inputSound.play();
 
       if (mintAmount.value < 0) {
@@ -105,16 +246,72 @@ export default {
       }
     };
 
-    const storeMintAmount = () => {
+    const handleDisperseInput = (index) => {
+      inputSound.play();
+
+      if (recipients.value[index]?.mintAmount < 0) {
+        recipients.value[index].mintAmount = 0;
+      }
+    };
+
+    const removeRecipient = (index) => {
+      removeRecipientSound.play();
+
+      if (recipients.value.length > 1) {
+        recipients.value.splice(index, 1);
+      }
+    };
+
+    const storeMintAmount = async () => {
       playMintLfgSound();
 
       // Convert to wei
       const mintAmountInWei = parseEther(mintAmount.value.toString());
 
+      const ethToMintRatio = await client.readContract({
+        abi: [
+          {
+            inputs: [],
+            name: "ethToMintRatio",
+            outputs: [
+              {
+                internalType: "uint256",
+                name: "ratio",
+                type: "uint256",
+              },
+            ],
+            stateMutability: "view",
+            type: "function",
+          },
+        ],
+        address: PEREPTUAL_MINT_DIAMOND_ADDRESS,
+        functionName: "ethToMintRatio",
+      });
+
+      console.log("ethToMintRatio:", ethToMintRatio);
+
       txs.value.push({
         to: PEREPTUAL_MINT_DIAMOND_ADDRESS,
-        value: 0,
-        data: mintAmountInWei,
+        value: mintAmountInWei / ethToMintRatio,
+        data: encodeFunctionData({
+          abi: [
+            {
+              inputs: [
+                {
+                  internalType: "uint256",
+                  name: "amount",
+                  type: "uint256",
+                },
+              ],
+              name: "mintAirdrop",
+              outputs: [],
+              stateMutability: "payable",
+              type: "function",
+            },
+          ],
+          functionName: "mintAirdrop",
+          args: [mintAmountInWei],
+        }),
       });
 
       // Logic to store mintAmount for a transaction
@@ -124,6 +321,8 @@ export default {
 
       // Possibly close the modal or trigger the next step
       showMintModal.value = false;
+
+      showDisperseModal.value = true;
     };
 
     // Async function to fetch wallet info and balance
@@ -135,6 +334,8 @@ export default {
         };
 
         const appsSdk = new SafeAppsSDK(opts);
+
+        appsSdkRef.value = appsSdk;
 
         const info = await appsSdk.safe.getInfo();
 
@@ -164,13 +365,21 @@ export default {
 
     return {
       account,
+      addRecipient,
+      closeDisperseModal,
       closeMintModal,
+      disperseTokens,
       displayMintModal,
       ethBalance,
       error,
-      handleInput,
+      formatNumber,
+      handleDisperseInput,
+      handleMintInput,
       mintAmount,
       playConnectionDisplaySound,
+      recipients,
+      removeRecipient,
+      showDisperseModal,
       showMintModal,
       storeMintAmount,
     };
@@ -350,5 +559,31 @@ export default {
 .button-container {
   margin-top: 1rem;
   text-align: center;
+}
+
+.recipient-group {
+  margin: 1rem;
+}
+
+.add-button,
+.delete-button {
+  background-color: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  padding: 0.5rem 1rem;
+  font-family: "Orbitron", sans-serif;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  margin-right: 1rem;
+}
+
+.add-button:hover,
+.delete-button:hover {
+  background-color: #3e8e41;
+}
+
+.sci-fi-input-recipients {
+  margin-right: 0.5rem;
 }
 </style>
