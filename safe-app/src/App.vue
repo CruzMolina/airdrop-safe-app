@@ -28,8 +28,8 @@
         <h2>How Much $MINT Should We Mint?</h2>
         <div class="input-group">
           <input
-            type="number"
-            v-model="mintAmount"
+            type="text"
+            v-model="displayMintAmount"
             class="sci-fi-input"
             @input="handleMintInput"
             @focus="handleMintInput"
@@ -64,8 +64,8 @@
             @focus="() => handleDisperseInput(index)"
           />
           <input
-            type="number"
-            v-model="recipient.mintAmount"
+            type="text"
+            v-model="recipient.displayMintAmount"
             placeholder="Amount"
             class="sci-fi-input sci-fi-input-recipient"
             min="0"
@@ -96,7 +96,7 @@
 import SafeAppsSDK from "@safe-global/safe-apps-sdk";
 import { createPublicClient, encodeFunctionData, http, parseEther } from "viem";
 import { arbitrum } from "viem/chains";
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 
 const backSound = new Audio("back-button.mp3");
 const closeModalSound = new Audio("/close-modal.ogg");
@@ -135,18 +135,60 @@ export default {
   setup() {
     const account = ref(null);
     const appsSdkRef = ref(null);
+    const displayMintAmount = ref(""); // Formatted display value
     const ethBalance = ref(0);
     const error = ref("");
-    const mintAmount = ref(100000); // Default to 100,000 $MINT
-    const recipients = ref([{ recipientAddress: "", mintAmount: 100000 }]);
+    const rawMintAmount = ref(100000); // Default to 100,000 $MINT, raw input value
+    const recipients = ref([
+      {
+        recipientAddress: "",
+        rawMintAmount: 100000,
+        displayMintAmount: "100,000",
+      },
+    ]);
     const showDisperseModal = ref(false);
     const showMintModal = ref(false);
     const txs = ref([]);
 
+    // Watch for changes in rawMintAmount and update displayMintAmount
+    watch(rawMintAmount, (newValue) => {
+      displayMintAmount.value = new Intl.NumberFormat("en-US", {
+        maximumFractionDigits: 0,
+      }).format(newValue);
+    });
+
+    // Update rawMintAmount whenever displayMintAmount changes
+    watch(
+      recipients,
+      (newRecipients) => {
+        newRecipients.forEach((recipient) => {
+          const parsedValue = parseInt(
+            recipient.displayMintAmount.replace(/[\D]/g, ""),
+            10,
+          );
+          recipient.rawMintAmount = isNaN(parsedValue) ? 0 : parsedValue;
+
+          recipient.displayMintAmount = new Intl.NumberFormat("en-US", {
+            maximumFractionDigits: 0,
+          }).format(recipient.rawMintAmount);
+        });
+      },
+      { deep: true },
+    );
+
+    // Computed property to parse display value back to raw number
+    const parsedMintAmount = computed(() => {
+      return parseInt(displayMintAmount.value.replace(/[\D]/g, ""), 10);
+    });
+
     const addRecipient = () => {
       playMintLfgSound();
 
-      recipients.value.push({ recipientAddress: "", mintAmount: 100000 });
+      recipients.value.push({
+        recipientAddress: "",
+        rawMintAmount: 100000,
+        displayMintAmount: "100,000",
+      });
     };
 
     const closeDisperseModal = () => {
@@ -171,7 +213,7 @@ export default {
 
       // Extract mint amounts
       const mintAmounts = recipients.value.map((recipient) =>
-        parseEther(recipient.mintAmount.toString()),
+        parseEther(recipient.rawMintAmount.toString()),
       );
 
       console.log(recipientAddresses, mintAmounts);
@@ -241,16 +283,18 @@ export default {
     const handleMintInput = () => {
       inputSound.play();
 
-      if (mintAmount.value < 0) {
-        mintAmount.value = 0;
+      rawMintAmount.value = parsedMintAmount.value;
+
+      if (rawMintAmount.value < 0) {
+        rawMintAmount.value = 0;
       }
     };
 
     const handleDisperseInput = (index) => {
       inputSound.play();
 
-      if (recipients.value[index]?.mintAmount < 0) {
-        recipients.value[index].mintAmount = 0;
+      if (recipients.value[index]?.rawMintAmount.value < 0) {
+        recipients.value[index].rawMintAmount.value = 0;
       }
     };
 
@@ -266,7 +310,7 @@ export default {
       playMintLfgSound();
 
       // Convert to wei
-      const mintAmountInWei = parseEther(mintAmount.value.toString());
+      const mintAmountInWei = parseEther(rawMintAmount.value.toString());
 
       const ethToMintRatio = await client.readContract({
         abi: [
@@ -363,19 +407,24 @@ export default {
       fetchWalletInfo();
     });
 
+    // Initialize displayMintAmount
+    displayMintAmount.value = new Intl.NumberFormat("en-US", {
+      maximumFractionDigits: 0,
+    }).format(rawMintAmount.value);
+
     return {
       account,
       addRecipient,
       closeDisperseModal,
       closeMintModal,
       disperseTokens,
+      displayMintAmount,
       displayMintModal,
       ethBalance,
       error,
       formatNumber,
       handleDisperseInput,
       handleMintInput,
-      mintAmount,
       playConnectionDisplaySound,
       recipients,
       removeRecipient,
