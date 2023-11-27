@@ -165,8 +165,8 @@ export default {
       disperseTokensSound.play();
 
       // Extract recipient addresses
-      const recipientAddresses = recipients.value.map(
-        (recipient) => recipient.recipientAddress,
+      const recipientAddresses = recipients.value.map((recipient) =>
+        recipient.recipientAddress.trim(),
       );
 
       // Extract mint amounts
